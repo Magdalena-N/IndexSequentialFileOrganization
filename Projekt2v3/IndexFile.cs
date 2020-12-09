@@ -28,10 +28,10 @@ namespace Projekt2v3
             this.page = new IndexPage();
             this.reads = 0;
             this.writes = 0;
-            FillIndex2();
+            FillIndex();
         }
 
-        public void FillIndex()
+        /*public void FillIndex()
         {
             using (BinaryWriter writer = new BinaryWriter(File.Open(filePath, FileMode.OpenOrCreate)))
             {
@@ -41,7 +41,7 @@ namespace Projekt2v3
                     writer.Write(i);
                 }
             }
-        }
+        }*/
 
         public void WritePage()
         {
@@ -96,7 +96,7 @@ namespace Projekt2v3
             return row;
         }
 
-        public void FillIndex2()
+        public void FillIndex()
         {
             fs = File.Open(this.filePath, FileMode.Open);
             fs.Seek(0, SeekOrigin.Begin);
@@ -110,22 +110,22 @@ namespace Projekt2v3
             fs.Close();
         }
 
-        public void UpdateIndex(int pageNumber, int key)
+        /*public void UpdateIndex(int pageNumber, int key)
         {
             using (BinaryWriter writer = new BinaryWriter(File.Open(filePath, FileMode.OpenOrCreate)))
             {
                 writer.Seek(pageNumber * IndexRow.ROW_SIZE, SeekOrigin.Begin);
                 writer.Write(key);
             }
-        }
+        }*/
 
-        public void UpdateIndex2(int pageNumber, int key)
+        public void UpdateIndex(int pageNumber, int key)
         {
             this.reads = 0;
             this.writes = 0;
 
             fs = File.Open(this.filePath, FileMode.Open);
-            int page = (int) Math.Ceiling((double)pageNumber / (double)IndexPage.BLOCKING_FACTOR);
+            int page = pageNumber / IndexPage.BLOCKING_FACTOR;
             ReadPage(page);
             IndexRow row = ReadNextRow();
             while(row.page != pageNumber)
@@ -139,7 +139,7 @@ namespace Projekt2v3
             fs.Close();
         }
 
-        public int FindPage(int key)
+        /*public int FindPage(int key)
         {
             int tempKey;
             int pageNumber = 0;
@@ -162,9 +162,9 @@ namespace Projekt2v3
             } 
             
             return pageNumber;
-        }
+        }*/
 
-        public int FindPage2(int key)
+        public int FindPage(int key)
         {
             this.reads = 0;
             this.writes = 0;
