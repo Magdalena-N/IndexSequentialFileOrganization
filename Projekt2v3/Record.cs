@@ -17,7 +17,15 @@ namespace Projekt2v3
 
         public Record()
         {
-
+            this.key = 0;
+            this.numbers[0] = 0;
+            this.numbers[1] = 0;
+            this.numbers[2] = 0;
+            this.numbers[3] = 0;
+            this.numbers[4] = 0;
+            this.page = 0;
+            this.position = 0;
+            this.flag = false;
         }
         public Record(int[] num)
         {

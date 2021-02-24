@@ -11,8 +11,8 @@ namespace Projekt2v3
         private Page page = new Page();
         private IndexFile indexFile;
         private FileStream fs;
-        private int primaryArea;    // liczba stron
-        private int overflowArea;   // liczba stron
+        public int primaryArea;    // liczba stron
+        public int overflowArea;   // liczba stron
         private int previousPage;
         private int previousPosition;
         private double alpha;
@@ -22,8 +22,14 @@ namespace Projekt2v3
         public int savedRecords;
         public double vnRatio;
         public int numberOfOverflows;
+        public int numberOfPrimaryRecords;
+        public int reads;
+        public int writes;
+        public int lastRead;
+        public int lastWrite;
+            
 
-        public DataFile(string fileName, int primaryPages, int overflowPages, double alpha,double beta, double vnRatio)
+        public DataFile(string fileName, int primaryPages, int overflowPages, double alpha, double beta, double vnRatio)
         {
             this.primaryArea = primaryPages;
             this.overflowArea = overflowPages;
@@ -32,6 +38,11 @@ namespace Projekt2v3
             this.vnRatio = vnRatio;
             this.savedRecords = 0;
             this.numberOfOverflows = 0;
+            this.numberOfPrimaryRecords = 0;
+            this.reads = 0;
+            this.writes = 0; ;
+            this.lastRead = -1;
+            this.lastWrite = -1;
 
             filePath = "./../../../data/" + fileName + ".bin";
             // stworz nowy plik o rozmiarze 2 * PAGE_SIZE
@@ -51,17 +62,18 @@ namespace Projekt2v3
 
         public void ReadPage(int pageNumber)
         {
-
             fs.Seek(pageNumber * Page.PAGE_SIZE, SeekOrigin.Begin);
             fs.Read(page.diskBlock);
             page.pageNumber = pageNumber;
             page.position = 0;
+            this.reads++;
         }
 
         public void WritePage()
         {
             fs.Seek(page.pageNumber * Page.PAGE_SIZE, SeekOrigin.Begin);
             fs.Write(page.diskBlock);
+            this.writes++;
         }
 
         private void InsertFirstRecord()
@@ -71,36 +83,42 @@ namespace Projekt2v3
             Record record = new Record(num, key);
             //InsertRecord(record);
             int page = 0;
-            int startPosition = 0;
-            //WriteRecord2(ref page, record, ref startPosition);
-            WriteRecord2(page, record);
+            
+            WriteRecord(page, record);
             indexFile.UpdateIndex(page, key);
         }
 
         public void InsertRecord(Record record)
         {
-            double ratio = (double)numberOfOverflows / savedRecords;
+            //double ratio = (double)numberOfOverflows / savedRecords;
+            double ratio = (double)numberOfOverflows / numberOfPrimaryRecords;
 
-            if (ratio > beta || numberOfOverflows == overflowArea * Page.BLOCKING_FACTOR) 
+            if (ratio > beta || numberOfOverflows == overflowArea * Page.BLOCKING_FACTOR)
             {
                 this.Reorganize();
             }
-            
-            int pageNumber = indexFile.FindPage(record.key);
-            //int startPosition = 0;
 
-            //WriteRecord2(ref pageNumber, record, ref startPosition);
-            WriteRecord2(pageNumber, record);
+            this.reads = 0;
+            this.writes = 0;
+            this.indexFile.reads = 0;
+            this.indexFile.writes = 0;
+
+            int pageNumber = indexFile.FindPage(record.key);
+
+            WriteRecord(pageNumber, record);
 
             if (savedAt != -1 && savedAt < primaryArea && savedAtPosition == 0)
             {
                 indexFile.UpdateIndex(savedAt, record.key);
             }
 
-            if(savedAt >= primaryArea)
+            if (savedAt >= primaryArea)
             {
                 numberOfOverflows++;
             }
+
+            this.reads += indexFile.reads;
+            this.writes += indexFile.writes;
         }
 
         public Record GetNextRecord()
@@ -155,502 +173,35 @@ namespace Projekt2v3
             {
                 return null;
             }
-            
+
         }
 
         public Record GetRecordAt(int fromPage, int position)
         {
             int oldPage = page.pageNumber;
             int oldPosition = page.position;
+            int oldLastRead = lastRead;
 
-            ReadPage(fromPage);
+            ReadPageFromDisk(fromPage);
             page.position = position;
             byte[] recInBytes = new byte[Record.SIZE];
             Array.Copy(page.diskBlock, position * Record.SIZE, recInBytes, 0, Record.SIZE);
             Record record = new Record();
             record.FromBytes(recInBytes);
 
-            ReadPage(oldPage);
+            ReadPageFromDisk(oldPage);
             page.position = oldPosition;
-
+            lastRead = oldLastRead;
             return record;
-        }
-
-        public void WriteRecord(ref int pageN, Record record, ref int startPosition, Record previousRecord = null)
-        {
-
-            bool written = false;
-            ReadPage(pageN);
-            
-            while (!written)
-            {
-                // przegladamy cala strone w poszukiwaniu miejsca
-                for (int i = startPosition; i < Page.BLOCKING_FACTOR; i++)
-                {
-                    Record temp = GetNextRecord();
-                    // zapis na stronie
-                   
-                    if (temp is null)
-                    {
-                        byte[] recInBytes = record.GetBytes();
-                        Array.Copy(recInBytes, 0, page.diskBlock, i * Record.SIZE, Record.SIZE);
-                        WritePage();
-                        written = true;
-                        startPosition = i;
-                        pageN = page.pageNumber;
-                        savedAt = page.pageNumber;
-                        savedRecords++;
-                        if(!(previousRecord is null))
-                        {
-                            previousRecord.page = pageN;
-                            previousRecord.position = i;
-                        }
-                        break;
-                    }
-                    // zapis w overflow
-                    else if (temp.key > record.key)
-                    {
-                        previousRecord = GetRecordAt(i-1);
-                        //szukanie w lancuchu
-                        if (previousRecord.page != 0)
-                        {
-                            previousPage = pageN;
-                            previousPosition = i;
-                            int previousRecordPage = previousRecord.page;
-                            previousRecord = GetRecordAt(previousRecord.page, previousRecord.position);
-                            WriteRecord(ref previousRecordPage, record, ref previousRecord.position, previousRecord);
-                            ReadPage(previousRecordPage);
-                            byte[] recInBytes = previousRecord.GetBytes();
-                            Array.Copy(recInBytes, 0, page.diskBlock, (previousPosition - 1) * Record.SIZE, Record.SIZE);
-                            WritePage();
-                            written = true;
-                            break;
-                        }
-                        else
-                        {
-                            
-                            previousPage = pageN;
-                            previousPosition = i;
-                            int startPage = primaryArea;
-                            WriteRecord(ref startPage, record, ref previousRecord.position,previousRecord);
-                            pageN = startPage;
-                            ReadPage(previousPage);
-                            //previousRecord.page = startPage;
-                            byte[] recInBytes = previousRecord.GetBytes();
-                            Array.Copy(recInBytes, 0, page.diskBlock, (previousPosition - 1) * Record.SIZE, Record.SIZE);
-                            WritePage();
-                            written = true;
-                            break;
-                        }
-                    }
-
-
-                }
-
-            }
-
-
-        }
-
-        public void WriteRecord2(int pageNumber, Record record)
-        {
-            ReadPage(pageNumber);
-            Record previousRecord = GetRecordAt(0);
-            int previousRecordPage = pageNumber;
-            int previousRecordPosition = 0;
-            bool written = false;
-            for (int i = pageNumber * Page.BLOCKING_FACTOR; i < primaryArea * Page.BLOCKING_FACTOR; i++) 
-            {
-                Record temp = GetNextRecord();
-                if (temp is null)
-                {
-                    // wpisz rekord
-                    int newPosition = i % Page.BLOCKING_FACTOR;
-                    int newPage = page.pageNumber;
-                    byte[] recInBytes = record.GetBytes();
-                    Array.Copy(recInBytes, 0, page.diskBlock, newPosition * Record.SIZE, Record.SIZE);
-                    WritePage();
-                    savedAt = newPage;
-                    savedAtPosition = newPosition;
-                    savedRecords++;
-                    written = true;
-                    break;
-                }
-                else if (temp.key > record.key )
-                {
-                    // overflow
-                    if(previousRecord.page != 0)
-                    {
-                        // przejscie do miejsca wskazywanego
-                        ReadPage(previousRecord.page);
-                        Record newTemp = GetRecordAt(previousRecord.position);
-                        
-                        if (newTemp.key > record.key)
-                        {
-                            int nextPage = page.pageNumber;
-                            int nextPosition = previousRecord.position;
-
-                            // szukamy nulla i aktualizujemy wskaznik 
-                            for (int k = 0; k < overflowArea * Page.BLOCKING_FACTOR; k++)
-                            {
-                                newTemp = GetNextRecord();
-                                if (newTemp is null)
-                                {
-                                    // wpisz rekord
-                                    int newPosition = k % Page.BLOCKING_FACTOR;
-                                    int newPage = page.pageNumber;
-                                    // zaktualizuj aktualny wskaznik
-                                    record.page = nextPage;
-                                    record.position = nextPosition;
-                                    byte[] recInBytes = record.GetBytes();
-                                    Array.Copy(recInBytes, 0, page.diskBlock, newPosition * Record.SIZE, Record.SIZE);
-                                    WritePage();
-                                    savedAt = newPage;
-                                    savedAtPosition = newPosition;
-                                    savedRecords++;
-                                    written = true;
-                                    // zaktualizuj wskaznik poprzedniego
-                                    ReadPage(previousRecordPage);
-                                    previousRecord.page = newPage;
-                                    previousRecord.position = newPosition;
-                                    byte[] prevInBytes = previousRecord.GetBytes();
-                                    Array.Copy(prevInBytes, 0, page.diskBlock, previousRecordPosition * Record.SIZE, Record.SIZE);
-                                    WritePage();
-
-                                    
-                                    
-                                    break;
-                                }
-                            }
-                        }
-                        else if(newTemp.key < record.key)
-                        {
-                            
-                            while (true)
-                            {
-                                previousRecordPage = page.pageNumber;
-                                previousRecordPosition = previousRecord.position;
-                                previousRecord = newTemp.DeepCopy();
-                                if (newTemp.page != 0)
-                                {
-                                    // przejscie do miejsca wskazywanego
-                                    ReadPage(newTemp.page);
-                                    Record newTemp2 = GetRecordAt(newTemp.position);
-                                    if (newTemp2.key > record.key)
-                                    {
-                                        // szukamy nulla i aktualizujemy wskaznik newTemp
-                                        for (int k = 0; k < overflowArea * Page.BLOCKING_FACTOR; k++) 
-                                        {
-                                            newTemp = GetNextRecord();
-                                            if(newTemp is null)
-                                            {
-                                                // wpisz rekord
-                                                int newPosition = k % Page.BLOCKING_FACTOR;
-                                                int newPage = page.pageNumber;
-                                                byte[] recInBytes = record.GetBytes();
-                                                Array.Copy(recInBytes, 0, page.diskBlock, newPosition * Record.SIZE, Record.SIZE);
-                                                WritePage();
-                                                savedAt = newPage;
-                                                savedAtPosition = newPosition;
-                                                savedRecords++;
-                                                written = true;
-                                                // zaktualizuj wskaznik poprzedniego
-                                                ReadPage(previousRecordPage);
-                                                previousRecord.page = newPage;
-                                                previousRecord.position = newPosition;
-                                                byte[] prevInBytes = previousRecord.GetBytes();
-                                                Array.Copy(prevInBytes, 0, page.diskBlock, previousRecordPosition * Record.SIZE, Record.SIZE);
-                                                WritePage();
-                                                break;
-                                            }
-                                        }
-                                        break;
-                                    }
-                                    else if (newTemp2.key < record.key)
-                                    {
-                                        newTemp = newTemp2.DeepCopy();
-                                    }
-                                    else
-                                    {
-                                        written = true;
-                                        this.savedAt = -1;
-                                        Console.WriteLine("Record with the same key already exists in the database. You cannot insert this record.");
-                                        break;
-                                    }
-                                }
-                                else
-                                {
-                                    // szukamy nulla i aktualizujemy wskaznik newTemp
-                                    for (int k = 0; k < overflowArea * Page.BLOCKING_FACTOR; k++)
-                                    {
-                                        newTemp = GetNextRecord();
-                                        if (newTemp is null)
-                                        {
-                                            // wpisz rekord
-                                            int newPosition = k % Page.BLOCKING_FACTOR;
-                                            int newPage = page.pageNumber;
-                                            byte[] recInBytes = record.GetBytes();
-                                            Array.Copy(recInBytes, 0, page.diskBlock, newPosition * Record.SIZE, Record.SIZE);
-                                            WritePage();
-                                            savedAt = newPage;
-                                            savedAtPosition = newPosition;
-                                            savedRecords++;
-                                            written = true;
-                                            // zaktualizuj wskaznik poprzedniego
-                                            ReadPage(previousRecordPage);
-                                            previousRecord.page = newPage;
-                                            previousRecord.position = newPosition;
-                                            byte[] prevInBytes = previousRecord.GetBytes();
-                                            Array.Copy(prevInBytes, 0, page.diskBlock, previousRecordPosition * Record.SIZE, Record.SIZE);
-                                            WritePage();
-                                            break;
-                                        }
-
-                                    }
-                                    break;
-                                }
-                            }
-                            
-                        }
-                        else if(newTemp.key == record.key)
-                        {
-                            Console.WriteLine("Record with the same key already exists in the database. You cannot insert this record.");
-                            written = true;
-                            this.savedAt = -1;
-                        }
-                    }
-                    else
-                    {
-                        ReadPage(primaryArea);
-                        
-                        // szukamy nulla i aktualizujemy wskaznik 
-                        for (int k = 0; k < overflowArea * Page.BLOCKING_FACTOR; k++)
-                        {
-                            Record newTemp = GetNextRecord();
-                            if (newTemp is null)
-                            {
-                                // wpisz rekord
-                                int newPosition = k % Page.BLOCKING_FACTOR;
-                                int newPage = page.pageNumber;
-                                byte[] recInBytes = record.GetBytes();
-                                Array.Copy(recInBytes, 0, page.diskBlock, newPosition * Record.SIZE, Record.SIZE);
-                                WritePage();
-                                savedAt = newPage;
-                                savedAtPosition = newPosition;
-                                savedRecords++;
-                                written = true;
-                                // zaktualizuj wskaznik poprzedniego
-                                ReadPage(previousRecordPage);
-                                previousRecord.page = newPage;
-                                previousRecord.position = newPosition;
-                                byte[] prevInBytes = previousRecord.GetBytes();
-                                Array.Copy(prevInBytes, 0, page.diskBlock, previousRecordPosition * Record.SIZE, Record.SIZE);
-                                WritePage();
-                                break;
-                            }
-                        }
-                    }
-                    break;
-                }
-                else if(temp.key == record.key)
-                {
-                    Console.WriteLine("Record with the same key already exists in the database. You cannot insert this record.");
-                    written = true;
-                    this.savedAt = -1;
-                    break;
-                }
-                
-                previousRecord = temp.DeepCopy();
-                previousRecordPage = page.pageNumber;
-                previousRecordPosition = i % Page.BLOCKING_FACTOR;
-            }
-            if (!written)
-            {
-                if(previousRecord.page != 0)
-                {
-                    // przejscie do miejsca wskazywanego
-                    ReadPage(previousRecord.page);
-                    Record newTemp = GetRecordAt(previousRecord.position);
-
-                    if (newTemp.key > record.key)
-                    {
-                        int nextPage = page.pageNumber;
-                        int nextPosition = previousRecord.position;
-
-                        // szukamy nulla i aktualizujemy wskaznik 
-                        for (int k = 0; k < overflowArea * Page.BLOCKING_FACTOR; k++)
-                        {
-                            newTemp = GetNextRecord();
-                            if (newTemp is null)
-                            {
-                                // wpisz rekord
-                                int newPosition = k % Page.BLOCKING_FACTOR;
-                                int newPage = page.pageNumber;
-                                // zaktualizuj aktualny wskaznik
-                                record.page = nextPage;
-                                record.position = nextPosition;
-                                byte[] recInBytes = record.GetBytes();
-                                Array.Copy(recInBytes, 0, page.diskBlock, newPosition * Record.SIZE, Record.SIZE);
-                                WritePage();
-                                savedAt = newPage;
-                                savedAtPosition = newPosition;
-                                savedRecords++;
-                                written = true;
-                                // zaktualizuj wskaznik poprzedniego
-                                ReadPage(previousRecordPage);
-                                previousRecord.page = newPage;
-                                previousRecord.position = newPosition;
-                                byte[] prevInBytes = previousRecord.GetBytes();
-                                Array.Copy(prevInBytes, 0, page.diskBlock, previousRecordPosition * Record.SIZE, Record.SIZE);
-                                WritePage();
-
-
-
-                                break;
-                            }
-                        }
-                    }
-                    else if (newTemp.key < record.key)
-                    {
-
-                        while (true)
-                        {
-                            previousRecordPage = page.pageNumber;
-                            previousRecordPosition = previousRecord.position;
-                            previousRecord = newTemp.DeepCopy();
-                            if (newTemp.page != 0)
-                            {
-                                // przejscie do miejsca wskazywanego
-                                ReadPage(newTemp.page);
-                                Record newTemp2 = GetRecordAt(newTemp.position);
-                                if (newTemp2.key > record.key)
-                                {
-                                    int nextPage = page.pageNumber;
-                                    int nextPosition = previousRecord.position;
-                                    // szukamy nulla i aktualizujemy wskaznik newTemp
-                                    for (int k = 0; k < overflowArea * Page.BLOCKING_FACTOR; k++)
-                                    {
-                                        newTemp = GetNextRecord();
-                                        if (newTemp is null)
-                                        {
-                                            // wpisz rekord
-                                            int newPosition = k % Page.BLOCKING_FACTOR;
-                                            int newPage = page.pageNumber;
-                                            record.page = nextPage;
-                                            record.position = nextPosition;
-                                            byte[] recInBytes = record.GetBytes();
-                                            Array.Copy(recInBytes, 0, page.diskBlock, newPosition * Record.SIZE, Record.SIZE);
-                                            WritePage();
-                                            savedAt = newPage;
-                                            savedAtPosition = newPosition;
-                                            savedRecords++;
-                                            written = true;
-                                            // zaktualizuj wskaznik poprzedniego
-                                            ReadPage(previousRecordPage);
-                                            previousRecord.page = newPage;
-                                            previousRecord.position = newPosition;
-                                            byte[] prevInBytes = previousRecord.GetBytes();
-                                            Array.Copy(prevInBytes, 0, page.diskBlock, previousRecordPosition * Record.SIZE, Record.SIZE);
-                                            WritePage();
-                                            break;
-                                        }
-                                    }
-                                    break;
-                                }
-                                else if (newTemp2.key < record.key)
-                                {
-                                    newTemp = newTemp2.DeepCopy();
-                                }
-                                
-                                else
-                                {
-                                    written = true;
-                                    this.savedAt = -1;
-                                    Console.WriteLine("Record with the same key already exists in the database. You cannot insert this record.");
-                                    break;
-                                }
-                                
-                            }
-                            else
-                            {
-                                // szukamy nulla i aktualizujemy wskaznik newTemp
-                                for (int k = 0; k < overflowArea * Page.BLOCKING_FACTOR; k++)
-                                {
-                                    newTemp = GetNextRecord();
-                                    if (newTemp is null)
-                                    {
-                                        // wpisz rekord
-                                        int newPosition = k % Page.BLOCKING_FACTOR;
-                                        int newPage = page.pageNumber;
-                                        byte[] recInBytes = record.GetBytes();
-                                        Array.Copy(recInBytes, 0, page.diskBlock, newPosition * Record.SIZE, Record.SIZE);
-                                        WritePage();
-                                        savedAt = newPage;
-                                        savedAtPosition = newPosition;
-                                        savedRecords++;
-                                        written = true;
-                                        // zaktualizuj wskaznik poprzedniego
-                                        ReadPage(previousRecordPage);
-                                        previousRecord.page = newPage;
-                                        previousRecord.position = newPosition;
-                                        byte[] prevInBytes = previousRecord.GetBytes();
-                                        Array.Copy(prevInBytes, 0, page.diskBlock, previousRecordPosition * Record.SIZE, Record.SIZE);
-                                        WritePage();
-                                        break;
-                                    }
-
-                                }
-                                break;
-                            }
-                        }
-
-                    }
-                    else if(newTemp.key == record.key)
-                    {
-                        Console.WriteLine("Record with the same key already exists in the database. You cannot insert this record.");
-                        written = true;
-                        this.savedAt = -1;
-                    }
-                }
-                else
-                {
-                    ReadPage(primaryArea);
-                    // szukamy nulla i aktualizujemy wskaznik 
-                    for (int k = 0; k < overflowArea * Page.BLOCKING_FACTOR; k++)
-                    {
-                        Record newTemp = GetNextRecord();
-                        if (newTemp is null)
-                        {
-                            // wpisz rekord
-                            int newPosition = k % Page.BLOCKING_FACTOR;
-                            int newPage = page.pageNumber;
-                            byte[] recInBytes = record.GetBytes();
-                            Array.Copy(recInBytes, 0, page.diskBlock, newPosition * Record.SIZE, Record.SIZE);
-                            WritePage();
-                            savedAt = newPage;
-                            savedAtPosition = newPosition;
-                            savedRecords++;
-                            // zaktualizuj wskaznik poprzedniego
-                            ReadPage(previousRecordPage);
-                            previousRecord.page = newPage;
-                            previousRecord.position = newPosition;
-                            byte[] prevInBytes = previousRecord.GetBytes();
-                            Array.Copy(prevInBytes, 0, page.diskBlock, previousRecordPosition * Record.SIZE, Record.SIZE);
-                            WritePage();
-                            break;
-                        }
-                        //previousRecord = newTemp.DeepCopy();
-                        //previousRecordPage = page.pageNumber;
-                        //previousRecordPosition = k % Page.BLOCKING_FACTOR;
-
-                    }
-                }
-            }
-                
         }
 
         public void ReadFile()
         {
+            this.reads = 0;
+            this.writes = 0;
+            this.indexFile.reads = 0;
+            this.indexFile.writes = 0;
+
             Console.WriteLine("------------");
             Console.WriteLine("Primary Area");
             Console.WriteLine("------------");
@@ -662,11 +213,11 @@ namespace Projekt2v3
                     Record record = GetNextRecord();
                     if (!(record is null))
                     {
-                        /*Console.WriteLine($"{i}.{j} K:{record.key} Numbers: {record.numbers[0]}," +
-                        $" {record.numbers[1]}, {record.numbers[2]}, {record.numbers[3]}, {record.numbers[4]}, " +
-                        $"Pointer: {record.page}.{record.position} Flag: {record.flag}");*/
-
                         Console.WriteLine($"{i}.{j} " + record.ToString());
+                    }
+                    else
+                    {
+                        Console.WriteLine($"{i}.{j} NULL");
                     }
                 }
             }
@@ -681,19 +232,27 @@ namespace Projekt2v3
                     Record record = GetNextRecord();
                     if (!(record is null))
                     {
-                        /*Console.WriteLine($"{i+primaryArea}.{j} K:{record.key} Numbers: {record.numbers[0]}," +
-                        $" {record.numbers[1]}, {record.numbers[2]}, {record.numbers[3]}, {record.numbers[4]}, " +
-                        $"Pointer: {record.page}.{record.position} Flag: {record.flag}");*/
                         Console.WriteLine($"{i + primaryArea}.{j} " + record.ToString());
+                    }
+                    else
+                    {
+                        Console.WriteLine($"{i + primaryArea}.{j} NULL");
                     }
                 }
             }
-            //ReadIndex();
+            this.reads += indexFile.reads;
+            this.writes += indexFile.writes;
         }
 
         public void ReadIndex()
         {
+            this.reads = 0;
+            this.writes = 0;
+            this.indexFile.reads = 0;
+            this.indexFile.writes = 0;
             indexFile.ReadFile();
+            this.reads += indexFile.reads;
+            this.writes += indexFile.writes;
         }
 
         public void WalkThroughChain(Record record)
@@ -705,10 +264,14 @@ namespace Projekt2v3
             {
                 prevPage = page.pageNumber;
                 prevPosition = page.position - 1;
-                ReadPage(record.page);
+                if (record.page != prevPage)
+                {
+                    ReadPage(record.page);
+                }
+                
                 page.position = record.position;
-                Record temp = GetRecordAt(record.page,record.position);
-                if (temp.page != 0) 
+                Record temp = GetRecordAt(record.page, record.position);
+                if (temp.page != 0)
                 {
                     WalkThroughChain(temp);
                 }
@@ -716,88 +279,51 @@ namespace Projekt2v3
                 {
                     Console.WriteLine(temp.ToString());
                 }
-                ReadPage(prevPage);
+                if (record.page != prevPage)
+                {
+                    ReadPage(prevPage);
+                }
                 page.position = prevPosition + 1;
             }
         }
 
         public void ReadFileInOrder()
         {
+            this.reads = 0;
+            this.writes = 0;
+            this.indexFile.reads = 0;
+            this.indexFile.writes = 0;
+
             Console.WriteLine("-------------");
             Console.WriteLine("File in order");
             Console.WriteLine("-------------");
             int pageN = 0;
             ReadPage(pageN);
-            
-            
-            for(int i = 0; i < primaryArea * Page.BLOCKING_FACTOR; i++)
+
+
+            for (int i = 0; i < primaryArea * Page.BLOCKING_FACTOR; i++)
             {
-                
+
                 Record record = GetNextRecord();
                 if (!(record is null))
                 {
                     WalkThroughChain(record);
                 }
-                
-            }
-            
 
-        }
-
-        public Record GetNextInOrderRecord(Record previous)
-        {
-            if(previous is null)
-            {
-                return null;
-            }
-            else
-            {
-                Record next;
-
-                if(previous.page != 0)
-                {
-                    next = GetRecordAt(previous.page, previous.position);
-                }
-                else
-                {
-                    next = GetNextRecord();
-                }
-
-                return next;
-            }
-        }
-
-        public void ReadFileInOrder2()
-        {
-            ReadPage(0);
-            Record previous = GetNextRecord();
-
-            if(!(previous is null))
-            {
-                Console.WriteLine(previous.ToString());
             }
 
-            Record record;
+            this.reads += indexFile.reads;
+            this.writes += indexFile.writes;
 
-            for (int i = 0; i < (primaryArea + overflowArea) * Page.BLOCKING_FACTOR - 1; i++) 
-            {
-                record = GetNextInOrderRecord(previous);
-
-                if (!(record is null))
-                {
-                    Console.WriteLine(record.ToString());
-                }
-
-                previous = record;
-                
-            }
         }
 
         public void FindInChain(Record record, int key, ref bool found)
         {
             int prevPage;
             int prevPosition;
-            if(record.key == key)
+            int prevLastRead;
+
+            if (record.key == key)
             {
                 Console.WriteLine(record.ToString());
             }
@@ -807,10 +333,11 @@ namespace Projekt2v3
                 {
                     prevPage = page.pageNumber;
                     prevPosition = page.position - 1;
-                    ReadPage(record.page);
+                    prevLastRead = lastRead;
+                    ReadPageFromDisk(record.page);
                     page.position = record.position;
                     Record temp = GetRecordAt(record.page, record.position);
-                    if(temp.key == key)
+                    if (temp.key == key)
                     {
                         Console.WriteLine(temp.ToString());
                         found = true;
@@ -823,28 +350,37 @@ namespace Projekt2v3
                         }
                         
                     }
+                    if (!found)
+                    {
+                        ReadPageFromDisk(prevPage);
+                        page.position = prevPosition + 1;
+                        lastRead = prevLastRead;
+                    }
                     
-                    ReadPage(prevPage);
-                    page.position = prevPosition + 1;
                 }
-                
+
             }
-            
+
         }
 
         public void ReadRecord(int key)
         {
+            this.reads = 0;
+            this.writes = 0;
+            this.indexFile.reads = 0;
+            this.indexFile.writes = 0;
+
             Record record;
             int pageNumber = indexFile.FindPage(key);
             bool found = false;
-            ReadPage(pageNumber);
+            ReadPageFromDisk(pageNumber);
 
             for (int i = pageNumber * Page.BLOCKING_FACTOR; i < primaryArea * Page.BLOCKING_FACTOR; i++)
             {
-                record = GetNextRecord();
+                record = ReadNextRecord();
                 if (!(record is null))
                 {
-                    if(record.key == key)
+                    if (record.key == key)
                     {
                         Console.WriteLine(record.ToString());
                         found = true;
@@ -854,87 +390,301 @@ namespace Projekt2v3
                     {
                         FindInChain(record, key, ref found);
                     }
-                    
+
+                }
+                if (found)
+                {
+                    break;
                 }
             }
             if (!found)
             {
                 Console.WriteLine("Record with the given key doesn't exist in the database.");
             }
+            this.reads += indexFile.reads;
+            this.writes += indexFile.writes;
+        }
+
+        public void LookingInChain(Record record, int key, ref bool found, bool delete, bool update, int[] newNumbers = null)
+        {
+            int prevPage;
+            int prevPosition;
+            int prevLastRead;
+
+            if (record.page != 0)
+            {
+                prevPage = page.pageNumber;
+                prevPosition = page.position - 1;
+                prevLastRead = lastRead;
+                ReadPageFromDisk(record.page);
+                page.position = record.position;
+                Record temp = GetRecordAt(record.page, record.position);
+                if (temp.key == key)
+                {
+                    if (delete)
+                    {
+                        temp.flag = true;
+                        byte[] recInBytes = temp.GetBytes();
+                        Array.Copy(recInBytes, 0, page.diskBlock, record.position * Record.SIZE, recInBytes.Length);
+                        WritePageToDisk();
+                        found = true;
+                        numberOfOverflows++;
+                    }
+                    else if (update)
+                    {
+                        if (temp.flag == false)
+                        {
+                            temp.numbers[0] = newNumbers[0];
+                            temp.numbers[1] = newNumbers[1];
+                            temp.numbers[2] = newNumbers[2];
+                            temp.numbers[3] = newNumbers[3];
+                            temp.numbers[4] = newNumbers[4];
+
+                            byte[] recInBytes = temp.GetBytes();
+                            Array.Copy(recInBytes, 0, page.diskBlock, record.position * Record.SIZE, recInBytes.Length);
+                            WritePageToDisk();
+                            found = true;
+                        }
+                        else
+                        {
+                            Console.WriteLine("You cannot modify deleted record.");
+                        }
+                    }
+
+                }
+                else
+                {
+                    if (temp.page != 0)
+                    {
+                        LookingInChain(temp, key, ref found, delete, update);
+                    }
+
+                }
+
+                if (!found)
+                {
+                    ReadPageFromDisk(prevPage);
+                    page.position = prevPosition + 1;
+                    lastRead = prevLastRead;
+                }
+            }
+        }
+
+        public void DeleteRecord(int key)
+        {
+            if (key > 0)
+            {
+                this.reads = 0;
+                this.writes = 0;
+                this.indexFile.reads = 0;
+                this.indexFile.writes = 0;
+
+                Record record;
+                int pageNumber = indexFile.FindPage(key);
+                bool found = false;
+                ReadPageFromDisk(pageNumber);
+
+                for (int i = pageNumber * Page.BLOCKING_FACTOR; i < primaryArea * Page.BLOCKING_FACTOR; i++)
+                {
+                    record = ReadNextRecord();
+                    if (!(record is null))
+                    {
+                        if (record.key == key)
+                        {
+                            record.flag = true;
+                            byte[] recInBytes = record.GetBytes();
+                            Array.Copy(recInBytes, 0, page.diskBlock, i % Page.BLOCKING_FACTOR * Record.SIZE, recInBytes.Length);
+                            WritePageToDisk();
+                            found = true;
+                            numberOfOverflows++;
+                            break;
+                        }
+                        else
+                        {
+                            LookingInChain(record, key, ref found, true, false);
+                        }
+
+                    }
+
+                    if (found)
+                    {
+                        break;
+                    }
+                }
+                if (!found)
+                {
+                    Console.WriteLine("Record with the given key doesn't exist in the database.");
+                }
+                this.reads += indexFile.reads;
+                this.writes += indexFile.writes;
+            }
+            else
+            {
+                Console.WriteLine("You cannot delete this record.");
+            }
+
+        }
+
+        public void WritePageToDisk()
+        {
+            this.writes++;
+            fs.Seek(page.pageNumber * Page.PAGE_SIZE, SeekOrigin.Begin);
+            fs.Write(page.diskBlock);
+            lastWrite = -1;
+            page.pageNumber++;
+            Array.Clear(page.diskBlock, 0, page.diskBlock.Length);
+            page.mode = Mode.Write;
+        }
+
+        public void Write(Record record)
+        {
+            if (lastWrite < Page.BLOCKING_FACTOR - 1)
+            {
+                lastWrite++;
+                byte[] rec = record.GetBytes();
+                Array.Copy(rec, 0, page.diskBlock, this.lastWrite * Record.SIZE, Record.SIZE);
+            }
+            else
+            {
+                WritePageToDisk();
+                Write(record);
+            }
+        }
+
+        public void WriteAt(Record record, int position)
+        {
+            byte[] rec = record.GetBytes();
+            Array.Copy(rec, 0, page.diskBlock, position * Record.SIZE, Record.SIZE);
+        }
+
+        public void ReadPageFromDisk(int pageNumber)
+        {
+            if(pageNumber != page.pageNumber || page.mode == Mode.Write)
+            {
+                this.reads++;
+                fs.Seek(pageNumber * Page.PAGE_SIZE, SeekOrigin.Begin);
+                fs.Read(page.diskBlock);
+                page.pageNumber = pageNumber;
+                
+            }
+            page.mode = Mode.Read;
+            page.position = 0;
+            lastRead = -1;
+        }
+
+        public Record ReadNextRecord()
+        {
+            Record rec = new Record();
+            bool exist;
+
+            if (lastRead < Page.BLOCKING_FACTOR - 1)
+            {
+                this.lastRead++;
+                byte[] recInBytes = new byte[Record.SIZE];
+                Array.Copy(page.diskBlock, lastRead * Record.SIZE, recInBytes, 0, recInBytes.Length);
+                exist = rec.FromBytes(recInBytes);
+                if (exist)
+                {
+                    return rec;
+                }
+                else
+                {
+                    return null;
+                }
+            }
+            else
+            {
+                ReadPageFromDisk(this.page.pageNumber + 1);
+                rec = ReadNextRecord();
+                return rec;
+            }
+            
         }
 
         public void Reorganize()
         {
-            
             // zaalokowanie miejsca na dysku dla glownej przestrzeni i przestrzeni nadmiarowej
-            int space = (int) Math.Ceiling((double)savedRecords / (Page.BLOCKING_FACTOR * alpha));  //liczba stron
+            int space = (int)Math.Ceiling((double)savedRecords / (Page.BLOCKING_FACTOR * alpha));  //liczba stron
             int mainSpace = space;
-            int overflowSpace = (int) Math.Ceiling((double) vnRatio * space);
+            //int overflowSpace = (int)Math.Ceiling((double)vnRatio * space);
+            int overflowSpace = (int)Math.Ceiling((double)beta * space);
             DataFile newDataFile = new DataFile("temp", mainSpace, overflowSpace, alpha, beta, vnRatio);
-            newDataFile.fs.Seek(0, SeekOrigin.Begin);
-
+            newDataFile.ReadPageFromDisk(0);
+            newDataFile.numberOfPrimaryRecords = 0;
             // zaalokowanie miejsca na dysku dla pliku indeksowego
             int indexSpace = mainSpace;
             IndexFile newIndex = new IndexFile("temp", indexSpace);
 
             // przepisanie rekordow
-            int pageN = 0;
-            ReadPage(pageN);
-
+            ReadPageFromDisk(0);
+            Record record;
+            Record nullRecord = new Record();
+            Record clone;
             int atPage = 0;
             int whichPage = 0;
+
             for (int i = 0; i < primaryArea * Page.BLOCKING_FACTOR; i++)
             {
-                
-                Record record = GetNextRecord();
-                if (!(record is null))
+                record = ReadNextRecord();
+                if((!(record is null)))
                 {
-                    if(atPage == 0)
-                    {
-                        newIndex.UpdateIndex(whichPage, record.key);
-                    }
-                    Record clone = record.DeepCopy();
+                    clone = record.DeepCopy();
                     clone.page = 0;
                     clone.position = 0;
-                    newDataFile.fs.Write(clone.GetBytes());
-                    atPage++;
-                    if(atPage>= alpha * Page.BLOCKING_FACTOR)
+                    if (clone.flag is false)
                     {
-                        for(int j = atPage; j < Page.BLOCKING_FACTOR; j++)
+                        if (atPage == 0)
                         {
-                            newDataFile.fs.Seek(Record.SIZE, SeekOrigin.Current);
+                            newIndex.UpdateIndex(whichPage, clone.key);
+                        }
+                        newDataFile.Write(clone);
+                        newDataFile.numberOfPrimaryRecords++;
+                        atPage++;
+                    }
+
+                    if (atPage >= alpha * Page.BLOCKING_FACTOR) 
+                    {
+                        for (int j = atPage; j < Page.BLOCKING_FACTOR; j++)
+                        {
+                            newDataFile.Write(nullRecord);
                         }
                         atPage = 0;
                         whichPage++;
                     }
-                    while(record.page != 0)
+                    while (record.page != 0)
                     {
                         record = GetRecordAt(record.page, record.position);
+                        
                         clone = record.DeepCopy();
                         clone.page = 0;
                         clone.position = 0;
-                        if (atPage == 0)
+                        
+                        if(clone.flag is false)
                         {
-                            newIndex.UpdateIndex(whichPage, record.key);
+                            if (atPage == 0)
+                            {
+                                newIndex.UpdateIndex(whichPage, clone.key);
+                            }
+                            newDataFile.Write(clone);
+                            newDataFile.numberOfPrimaryRecords++;
+                            atPage++;
                         }
-                        newDataFile.fs.Write(clone.GetBytes());
-                        atPage++;
                         if (atPage >= alpha * Page.BLOCKING_FACTOR)
                         {
                             for (int j = atPage; j < Page.BLOCKING_FACTOR; j++)
                             {
-                                newDataFile.fs.Seek(Record.SIZE, SeekOrigin.Current);
+                                newDataFile.Write(nullRecord);
                             }
                             atPage = 0;
                             whichPage++;
                         }
+                        
+                        
+                        
                     }
                 }
-                else
-                {
-                    //break;
-                }
             }
+            newDataFile.WritePageToDisk();
 
             File.Delete(this.indexFile.filePath);
             File.Move(newDataFile.indexFile.filePath, this.indexFile.filePath);
@@ -958,7 +708,296 @@ namespace Projekt2v3
             this.savedAt = newDataFile.savedAt;
             this.vnRatio = newDataFile.vnRatio;
             this.numberOfOverflows = newDataFile.numberOfOverflows;
+            this.numberOfPrimaryRecords = newDataFile.numberOfPrimaryRecords;
+            this.lastRead = -1;
+            this.lastWrite = -1;
 
+            this.reads += indexFile.reads;
+            this.writes += indexFile.writes;
+        }
+
+        public (int newPosition, int newPage) LookingForAFreePlace()
+        {
+            Record newTemp;
+            (int newPosition, int newPage) result = (0,0);
+
+            ReadPageFromDisk(primaryArea);  // wczytujemy pierwsza strone z overflow
+
+            // szukamy nulla i aktualizujemy wskaznik 
+            for (int k = 0; k < overflowArea * Page.BLOCKING_FACTOR; k++)
+            {
+                newTemp = ReadNextRecord();
+                if (newTemp is null)
+                {
+                    result.newPosition = k % Page.BLOCKING_FACTOR;
+                    result.newPage = page.pageNumber;
+                    break;
+                }
+            }
+
+            return result;
+        }
+
+        public void SaveRecord(Record record,int newPosition,int newPage)
+        {
+            WriteAt(record, newPosition);
+            WritePageToDisk();
+            savedAt = newPage;
+            savedAtPosition = newPosition;
+            savedRecords++;
+            numberOfPrimaryRecords++;
+        }
+
+        public void SaveRecord2(Record record, int newPosition, int newPage)
+        {
+            WriteAt(record, newPosition);
+            
+            savedAt = newPage;
+            savedAtPosition = newPosition;
+            savedRecords++;
+        }
+
+        public void UpdateRecord(Record record, int nextPage, int nextPosition)
+        {
+            record.page = nextPage;
+            record.position = nextPosition;
+        }
+
+        public void Update(int key, int[] numbers)
+        {
+            if (key > 0)
+            {
+                this.reads = 0;
+                this.writes = 0;
+                this.indexFile.reads = 0;
+                this.indexFile.writes = 0;
+
+                Record record;
+                int pageNumber = indexFile.FindPage(key);
+                bool found = false;
+                ReadPageFromDisk(pageNumber);
+
+                for (int i = pageNumber * Page.BLOCKING_FACTOR; i < primaryArea * Page.BLOCKING_FACTOR; i++)
+                {
+                    record = ReadNextRecord();
+                    if (!(record is null))
+                    {
+                        if (record.key == key)
+                        {
+                            if (record.flag == false)
+                            {
+                                record.numbers[0] = numbers[0];
+                                record.numbers[1] = numbers[1];
+                                record.numbers[2] = numbers[2]; 
+                                record.numbers[3] = numbers[3];
+                                record.numbers[4] = numbers[4];
+                                byte[] recInBytes = record.GetBytes();
+                                Array.Copy(recInBytes, 0, page.diskBlock, i % Page.BLOCKING_FACTOR * Record.SIZE, recInBytes.Length);
+                                WritePageToDisk();
+                            }
+                            else
+                            {
+                                Console.WriteLine("You cannot modify deleted record.");
+                            }
+                            found = true;
+                            break;
+                        }
+                        else
+                        {
+                            LookingInChain(record, key, ref found, false, true, numbers);
+                        }
+                    }
+                    if (found)
+                    {
+                        break;
+                    }
+                }
+                if (!found)
+                {
+                    Console.WriteLine("Record with the given key doesn't exist in the database.");
+                }
+                this.reads += indexFile.reads;
+                this.writes += indexFile.writes;
+            }
+            else
+            {
+                Console.WriteLine("You cannot modify this record.");
+            }
+        }
+
+        public void UpdatePreviousRecord(int previousRecordPage, Record previousRecord, int newPage, int newPosition, int previousRecordPosition)
+        {
+            ReadPageFromDisk(previousRecordPage);
+            UpdateRecord(previousRecord, newPage, newPosition);
+            WriteAt(previousRecord, previousRecordPosition);
+            WritePageToDisk();
+        }
+
+        public void WriteToOverflow(Record previousRecord, Record record, ref bool written, int previousRecordPage, int previousRecordPosition)
+        {
+            Record newTemp;
+            int nextPage;
+            int nextPosition;
+            int newPosition;
+            int newPage;
+            // overflow
+            if (previousRecord.page != 0)
+            {
+                // przejscie do miejsca wskazywanego
+                ReadPageFromDisk(previousRecord.page);
+                newTemp = GetRecordAt(previousRecord.position);
+
+                if (newTemp.key > record.key)
+                {
+                    nextPage = page.pageNumber;
+                    nextPosition = previousRecord.position;
+
+                    (newPosition, newPage) = LookingForAFreePlace();
+
+                    // zaktualizuj aktualny wskaznik
+                    UpdateRecord(record, nextPage, nextPosition);
+                    SaveRecord2(record, newPosition, newPage);
+                    written = true;
+                    if(newPage != previousRecordPage)
+                    {
+                        WritePageToDisk();
+                    }
+                    // zaktualizuj wskaznik poprzedniego
+                    UpdatePreviousRecord(previousRecordPage, previousRecord, newPage, newPosition, previousRecordPosition);
+
+                   
+                }
+                else if (newTemp.key < record.key)
+                {
+
+                    while (true)
+                    {
+                        previousRecordPage = page.pageNumber;
+                        previousRecordPosition = previousRecord.position;
+                        previousRecord = newTemp.DeepCopy();
+                        if (newTemp.page != 0)
+                        {
+                            // przejscie do miejsca wskazywanego
+                            ReadPageFromDisk(newTemp.page);
+                            Record newTemp2 = GetRecordAt(newTemp.position);
+                            if (newTemp2.key > record.key)
+                            {
+                                // zapisz rekord
+                                nextPage = page.pageNumber;
+                                nextPosition = previousRecord.position;
+
+                                (newPosition, newPage) = LookingForAFreePlace();
+                                UpdateRecord(record, nextPage, nextPosition);
+                                SaveRecord2(record, newPosition, newPage);
+                                written = true;
+                                if (newPage != previousRecordPage)
+                                {
+                                    WritePageToDisk();
+                                }
+                                // zaktualizuj wskaznik poprzedniego
+                                UpdatePreviousRecord(previousRecordPage, previousRecord, newPage, newPosition, previousRecordPosition);
+                                break;
+                            }
+                            else if (newTemp2.key < record.key)
+                            {
+                                newTemp = newTemp2.DeepCopy();
+                            }
+                            else
+                            {
+                                written = true;
+                                this.savedAt = -1;
+                                Console.WriteLine("Record with the same key already exists in the database. You cannot insert this record.");
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            (newPosition, newPage) = LookingForAFreePlace();
+                            // zapisz rekord
+                            SaveRecord2(record, newPosition, newPage);
+                            written = true;
+                            if (newPage != previousRecordPage)
+                            {
+                                WritePageToDisk();
+                            }
+                            // zaktualizuj wskaznik poprzedniego
+                            UpdatePreviousRecord(previousRecordPage, previousRecord, newPage, newPosition, previousRecordPosition);
+                            break;
+
+                        }
+                    }
+
+                }
+                else if (newTemp.key == record.key)
+                {
+                    Console.WriteLine("Record with the same key already exists in the database. You cannot insert this record.");
+                    written = true;
+                    this.savedAt = -1;
+                }
+            }
+            else
+            {
+                ReadPageFromDisk(primaryArea);
+                (newPosition, newPage) = LookingForAFreePlace();
+
+                // wpisz rekord
+                SaveRecord2(record, newPosition, newPage);
+                written = true;
+                if (newPage != previousRecordPage)
+                {
+                    WritePageToDisk();
+                }
+                // zaktualizuj wskaznik poprzedniego
+                UpdatePreviousRecord(previousRecordPage, previousRecord, newPage, newPosition, previousRecordPosition);
+            }
+        }
+
+        public void WriteRecord(int pageNumber, Record record)
+        {
+            
+            ReadPageFromDisk(pageNumber);
+            Record previousRecord = GetRecordAt(0);
+            int previousRecordPage = pageNumber;
+            int previousRecordPosition = 0;
+            int newPosition;
+            int newPage;
+            
+
+            bool written = false;
+
+            for (int i = pageNumber * Page.BLOCKING_FACTOR; i < primaryArea * Page.BLOCKING_FACTOR; i++)
+            {
+                Record temp = ReadNextRecord();
+                if (temp is null)
+                {
+                    // wpisz rekord
+                    newPosition = i % Page.BLOCKING_FACTOR;
+                    newPage = page.pageNumber;
+                    SaveRecord(record, newPosition, newPage);
+                    written = true;
+                    break;
+                }
+                else if (temp.key > record.key)
+                {
+                    WriteToOverflow(previousRecord, record, ref written, previousRecordPage, previousRecordPosition);
+                    break;
+                }
+                else if (temp.key == record.key)
+                {
+                    Console.WriteLine("Record with the same key already exists in the database. You cannot insert this record.");
+                    written = true;
+                    this.savedAt = -1;
+                    break;
+                }
+
+                previousRecord = temp.DeepCopy();
+                previousRecordPage = page.pageNumber;
+                previousRecordPosition = i % Page.BLOCKING_FACTOR;
+            }
+            if (!written)
+            {
+                WriteToOverflow(previousRecord, record, ref written, previousRecordPage, previousRecordPosition);
+            }
 
         }
 
