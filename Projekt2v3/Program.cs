@@ -10,7 +10,10 @@ namespace Projekt2v3
         static void Main(string[] args)
         {
             // stworzenie pliku poczatkowego z 1 strona na obszar danych i jedna strona obszaru nadmiernego
-            dataFile = new DataFile("test", 1, 1, 0.5, 0.4, 0.2);
+            double alpha = 0.5;
+            double beta = 0.4;
+            
+            dataFile = new DataFile("test", 1, 1, alpha, beta, 0.2);
 
             int option;
             int[] numbers = new int[5];
@@ -18,6 +21,7 @@ namespace Projekt2v3
 
             ShowMainMenu();
             option = Convert.ToInt32(Console.ReadLine());
+            
             switch (option)
             {
                 case 0:
@@ -90,6 +94,68 @@ namespace Projekt2v3
                     Console.WriteLine("Specify the path to the test file");
                     string filePath = Console.ReadLine();
                     ParseCommands(filePath);
+                    ShowMenu();
+                    option = Convert.ToInt32(Console.ReadLine());
+                    while (option != 0)
+                    {
+                        switch (option)
+                        {
+                            case 1:
+                                Console.WriteLine("Key: ");
+                                key = Convert.ToInt32(Console.ReadLine());
+                                Console.WriteLine("Numbers[0]: ");
+                                numbers[0] = Convert.ToInt32(Console.ReadLine());
+                                Console.WriteLine("Numbers[1]: ");
+                                numbers[1] = Convert.ToInt32(Console.ReadLine());
+                                Console.WriteLine("Numbers[2]: ");
+                                numbers[2] = Convert.ToInt32(Console.ReadLine());
+                                Console.WriteLine("Numbers[3]: ");
+                                numbers[3] = Convert.ToInt32(Console.ReadLine());
+                                Console.WriteLine("Numbers[4]: ");
+                                numbers[4] = Convert.ToInt32(Console.ReadLine());
+                                Insert(key, numbers);
+                                break;
+                            case 2:
+                                ReadFile();
+                                break;
+                            case 3:
+                                ReadIndex();
+                                break;
+                            case 4:
+                                ReadInOrder();
+                                break;
+                            case 5:
+                                Reorganize();
+                                break;
+                            case 6:
+                                Console.WriteLine("Key: ");
+                                key = Convert.ToInt32(Console.ReadLine());
+                                ShowRecord(key);
+                                break;
+                            case 7:
+                                Console.WriteLine("Key: ");
+                                key = Convert.ToInt32(Console.ReadLine());
+                                DeleteRecord(key);
+                                break;
+                            case 8:
+                                Console.WriteLine("Key: ");
+                                key = Convert.ToInt32(Console.ReadLine());
+                                Console.WriteLine("New Numbers[0]: ");
+                                numbers[0] = Convert.ToInt32(Console.ReadLine());
+                                Console.WriteLine("New Numbers[1]: ");
+                                numbers[1] = Convert.ToInt32(Console.ReadLine());
+                                Console.WriteLine("New Numbers[2]: ");
+                                numbers[2] = Convert.ToInt32(Console.ReadLine());
+                                Console.WriteLine("New Numbers[3]: ");
+                                numbers[3] = Convert.ToInt32(Console.ReadLine());
+                                Console.WriteLine("New Numbers[4]: ");
+                                numbers[4] = Convert.ToInt32(Console.ReadLine());
+                                UpdateRecord(key, numbers);
+                                break;
+                        }
+                        ShowMenu();
+                        option = Convert.ToInt32(Console.ReadLine());
+                    }
                     break;
             }
             
@@ -122,6 +188,7 @@ namespace Projekt2v3
         static void ShowInfo()
         {
             Console.WriteLine($"INFO: Reads:{dataFile.reads} Writes:{dataFile.writes}");
+           
         }
 
         static void ParseCommands(string filePath)
@@ -180,6 +247,7 @@ namespace Projekt2v3
                             UpdateRecord(key, numbers);
                             break;
                     }
+                    
                 }
                 
             }

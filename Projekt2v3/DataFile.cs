@@ -11,8 +11,8 @@ namespace Projekt2v3
         private Page page = new Page();
         private IndexFile indexFile;
         private FileStream fs;
-        private int primaryArea;    // liczba stron
-        private int overflowArea;   // liczba stron
+        public int primaryArea;    // liczba stron
+        public int overflowArea;   // liczba stron
         private int previousPage;
         private int previousPosition;
         private double alpha;
@@ -90,7 +90,8 @@ namespace Projekt2v3
 
         public void InsertRecord(Record record)
         {
-            double ratio = (double)numberOfOverflows / savedRecords;
+            //double ratio = (double)numberOfOverflows / savedRecords;
+            double ratio = (double)numberOfOverflows / numberOfPrimaryRecords;
 
             if (ratio > beta || numberOfOverflows == overflowArea * Page.BLOCKING_FACTOR)
             {
@@ -174,24 +175,6 @@ namespace Projekt2v3
             }
 
         }
-
-        /*public Record GetRecordAt(int fromPage, int position)
-        {
-            int oldPage = page.pageNumber;
-            int oldPosition = page.position;
-
-            ReadPage(fromPage);
-            page.position = position;
-            byte[] recInBytes = new byte[Record.SIZE];
-            Array.Copy(page.diskBlock, position * Record.SIZE, recInBytes, 0, Record.SIZE);
-            Record record = new Record();
-            record.FromBytes(recInBytes);
-
-            ReadPage(oldPage);
-            page.position = oldPosition;
-
-            return record;
-        }*/
 
         public Record GetRecordAt(int fromPage, int position)
         {
@@ -334,45 +317,6 @@ namespace Projekt2v3
 
         }
 
-        /*public void FindInChain(Record record, int key, ref bool found)
-        {
-            int prevPage;
-            int prevPosition;
-            if (record.key == key)
-            {
-                Console.WriteLine(record.ToString());
-            }
-            else
-            {
-                if (record.page != 0)
-                {
-                    prevPage = page.pageNumber;
-                    prevPosition = page.position - 1;
-                    ReadPage(record.page);
-                    page.position = record.position;
-                    Record temp = GetRecordAt(record.page, record.position);
-                    if (temp.key == key)
-                    {
-                        Console.WriteLine(temp.ToString());
-                        found = true;
-                    }
-                    else
-                    {
-                        if (temp.page != 0)
-                        {
-                            FindInChain(temp, key, ref found);
-                        }
-
-                    }
-
-                    ReadPage(prevPage);
-                    page.position = prevPosition + 1;
-                }
-
-            }
-
-        }*/
-
         public void FindInChain(Record record, int key, ref bool found)
         {
             int prevPage;
@@ -419,45 +363,6 @@ namespace Projekt2v3
 
         }
 
-
-        /*public void ReadRecord(int key)
-        {
-            this.reads = 0;
-            this.writes = 0;
-            this.indexFile.reads = 0;
-            this.indexFile.writes = 0;
-
-            Record record;
-            int pageNumber = indexFile.FindPage(key);
-            bool found = false;
-            ReadPage(pageNumber);
-
-            for (int i = pageNumber * Page.BLOCKING_FACTOR; i < primaryArea * Page.BLOCKING_FACTOR; i++)
-            {
-                record = GetNextRecord();
-                if (!(record is null))
-                {
-                    if (record.key == key)
-                    {
-                        Console.WriteLine(record.ToString());
-                        found = true;
-                        break;
-                    }
-                    else
-                    {
-                        FindInChain(record, key, ref found);
-                    }
-
-                }
-            }
-            if (!found)
-            {
-                Console.WriteLine("Record with the given key doesn't exist in the database.");
-            }
-            this.reads += indexFile.reads;
-            this.writes += indexFile.writes;
-        }*/
-
         public void ReadRecord(int key)
         {
             this.reads = 0;
@@ -500,72 +405,6 @@ namespace Projekt2v3
             this.writes += indexFile.writes;
         }
 
-        /*public void LookingInChain(Record record, int key, ref bool found, bool delete, bool update)
-        {
-            int prevPage;
-            int prevPosition;
-
-            if (record.page != 0)
-            {
-                prevPage = page.pageNumber;
-                prevPosition = page.position - 1;
-                ReadPage(record.page);
-                page.position = record.position;
-                Record temp = GetRecordAt(record.page, record.position);
-                if (temp.key == key)
-                {
-                    if (delete)
-                    {
-                        temp.flag = true;
-                        byte[] recInBytes = temp.GetBytes();
-                        Array.Copy(recInBytes, 0, page.diskBlock, record.position * Record.SIZE, recInBytes.Length);
-                        WritePage();
-                        found = true;
-                        numberOfOverflows++;
-                    }
-                    else if (update)
-                    {
-                        if(temp.flag == false)
-                        {
-                            Console.WriteLine($"Old Numbers[0]: {temp.numbers[0]} New Numbers[0]: ");
-                            temp.numbers[0] = Convert.ToInt32(Console.ReadLine());
-                            Console.WriteLine($"Old Numbers[1]: {temp.numbers[1]} New Numbers[1]: ");
-                            temp.numbers[1] = Convert.ToInt32(Console.ReadLine());
-                            Console.WriteLine($"Old Numbers[2]: {temp.numbers[2]} New Numbers[2]: ");
-                            temp.numbers[2] = Convert.ToInt32(Console.ReadLine());
-                            Console.WriteLine($"Old Numbers[3]: {temp.numbers[3]} New Numbers[3]: ");
-                            temp.numbers[3] = Convert.ToInt32(Console.ReadLine());
-                            Console.WriteLine($"Old Numbers[4]: {temp.numbers[4]} New Numbers[4]: ");
-                            temp.numbers[4] = Convert.ToInt32(Console.ReadLine());
-                            byte[] recInBytes = temp.GetBytes();
-                            Array.Copy(recInBytes, 0, page.diskBlock, record.position * Record.SIZE, recInBytes.Length);
-                            WritePage();
-                            found = true;
-                        }
-                        else
-                        {
-                            Console.WriteLine("You cannot modify deleted record.");
-                        }
-                    }
-                    
-                }
-                else
-                {
-                    if (temp.page != 0)
-                    {
-                        LookingInChain(temp, key, ref found, delete, update);
-                    }
-
-                }
-
-                ReadPage(prevPage);
-                page.position = prevPosition + 1;
-            }
-
-
-
-        }*/
-
         public void LookingInChain(Record record, int key, ref bool found, bool delete, bool update, int[] newNumbers = null)
         {
             int prevPage;
@@ -595,16 +434,6 @@ namespace Projekt2v3
                     {
                         if (temp.flag == false)
                         {
-                            /*Console.WriteLine($"Old Numbers[0]: {temp.numbers[0]} New Numbers[0]: ");
-                            temp.numbers[0] = Convert.ToInt32(Console.ReadLine());
-                            Console.WriteLine($"Old Numbers[1]: {temp.numbers[1]} New Numbers[1]: ");
-                            temp.numbers[1] = Convert.ToInt32(Console.ReadLine());
-                            Console.WriteLine($"Old Numbers[2]: {temp.numbers[2]} New Numbers[2]: ");
-                            temp.numbers[2] = Convert.ToInt32(Console.ReadLine());
-                            Console.WriteLine($"Old Numbers[3]: {temp.numbers[3]} New Numbers[3]: ");
-                            temp.numbers[3] = Convert.ToInt32(Console.ReadLine());
-                            Console.WriteLine($"Old Numbers[4]: {temp.numbers[4]} New Numbers[4]: ");
-                            temp.numbers[4] = Convert.ToInt32(Console.ReadLine());*/
                             temp.numbers[0] = newNumbers[0];
                             temp.numbers[1] = newNumbers[1];
                             temp.numbers[2] = newNumbers[2];
@@ -640,49 +469,6 @@ namespace Projekt2v3
                 }
             }
         }
-
-        /*public void DeleteRecord(int key)
-        {
-            if (key > 0)
-            {
-                Record record;
-                int pageNumber = indexFile.FindPage(key);
-                bool found = false;
-                ReadPage(pageNumber);
-
-                for (int i = pageNumber * Page.BLOCKING_FACTOR; i < primaryArea * Page.BLOCKING_FACTOR; i++)
-                {
-                    record = GetNextRecord();
-                    if (!(record is null))
-                    {
-                        if (record.key == key)
-                        {
-                            record.flag = true;
-                            byte[] recInBytes = record.GetBytes();
-                            Array.Copy(recInBytes, 0, page.diskBlock, i % Page.BLOCKING_FACTOR * Record.SIZE, recInBytes.Length);
-                            WritePage();
-                            found = true;
-                            numberOfOverflows++;
-                            break;
-                        }
-                        else
-                        {
-                            LookingInChain(record, key, ref found, true,false);
-                        }
-
-                    }
-                }
-                if (!found)
-                {
-                    Console.WriteLine("Record with the given key doesn't exist in the database.");
-                }
-            }
-            else
-            {
-                Console.WriteLine("You cannot delete this record.");
-            }
-
-        }*/
 
         public void DeleteRecord(int key)
         {
@@ -820,10 +606,11 @@ namespace Projekt2v3
             // zaalokowanie miejsca na dysku dla glownej przestrzeni i przestrzeni nadmiarowej
             int space = (int)Math.Ceiling((double)savedRecords / (Page.BLOCKING_FACTOR * alpha));  //liczba stron
             int mainSpace = space;
-            int overflowSpace = (int)Math.Ceiling((double)vnRatio * space);
+            //int overflowSpace = (int)Math.Ceiling((double)vnRatio * space);
+            int overflowSpace = (int)Math.Ceiling((double)beta * space);
             DataFile newDataFile = new DataFile("temp", mainSpace, overflowSpace, alpha, beta, vnRatio);
             newDataFile.ReadPageFromDisk(0);
-
+            newDataFile.numberOfPrimaryRecords = 0;
             // zaalokowanie miejsca na dysku dla pliku indeksowego
             int indexSpace = mainSpace;
             IndexFile newIndex = new IndexFile("temp", indexSpace);
@@ -851,6 +638,7 @@ namespace Projekt2v3
                             newIndex.UpdateIndex(whichPage, clone.key);
                         }
                         newDataFile.Write(clone);
+                        newDataFile.numberOfPrimaryRecords++;
                         atPage++;
                     }
 
@@ -866,8 +654,7 @@ namespace Projekt2v3
                     while (record.page != 0)
                     {
                         record = GetRecordAt(record.page, record.position);
-                        //if(record.flag is false)
-                        //{
+                        
                         clone = record.DeepCopy();
                         clone.page = 0;
                         clone.position = 0;
@@ -879,6 +666,7 @@ namespace Projekt2v3
                                 newIndex.UpdateIndex(whichPage, clone.key);
                             }
                             newDataFile.Write(clone);
+                            newDataFile.numberOfPrimaryRecords++;
                             atPage++;
                         }
                         if (atPage >= alpha * Page.BLOCKING_FACTOR)
@@ -890,7 +678,7 @@ namespace Projekt2v3
                             atPage = 0;
                             whichPage++;
                         }
-                        //}
+                        
                         
                         
                     }
@@ -957,12 +745,13 @@ namespace Projekt2v3
             savedAt = newPage;
             savedAtPosition = newPosition;
             savedRecords++;
+            numberOfPrimaryRecords++;
         }
 
         public void SaveRecord2(Record record, int newPosition, int newPage)
         {
             WriteAt(record, newPosition);
-            //WritePageToDisk();
+            
             savedAt = newPage;
             savedAtPosition = newPosition;
             savedRecords++;
@@ -973,63 +762,6 @@ namespace Projekt2v3
             record.page = nextPage;
             record.position = nextPosition;
         }
-
-        /*public void Update(int key)
-        {
-            if (key > 0)
-            {
-                Record record;
-                int pageNumber = indexFile.FindPage(key);
-                bool found = false;
-                ReadPage(pageNumber);
-
-                for (int i = pageNumber * Page.BLOCKING_FACTOR; i < primaryArea * Page.BLOCKING_FACTOR; i++)
-                {
-                    record = GetNextRecord();
-                    if (!(record is null))
-                    {
-                        if (record.key == key)
-                        {
-                            if(record.flag == false)
-                            {
-                                Console.WriteLine($"Old Numbers[0]: {record.numbers[0]} New Numbers[0]: ");
-                                record.numbers[0] = Convert.ToInt32(Console.ReadLine());
-                                Console.WriteLine($"Old Numbers[1]: {record.numbers[1]} New Numbers[1]: ");
-                                record.numbers[1] = Convert.ToInt32(Console.ReadLine());
-                                Console.WriteLine($"Old Numbers[2]: {record.numbers[2]} New Numbers[2]: ");
-                                record.numbers[2] = Convert.ToInt32(Console.ReadLine());
-                                Console.WriteLine($"Old Numbers[3]: {record.numbers[3]} New Numbers[3]: ");
-                                record.numbers[3] = Convert.ToInt32(Console.ReadLine());
-                                Console.WriteLine($"Old Numbers[4]: {record.numbers[4]} New Numbers[4]: ");
-                                record.numbers[4] = Convert.ToInt32(Console.ReadLine());
-                                byte[] recInBytes = record.GetBytes();
-                                Array.Copy(recInBytes, 0, page.diskBlock, i % Page.BLOCKING_FACTOR * Record.SIZE, recInBytes.Length);
-                                WritePage();
-                            }
-                            else
-                            {
-                                Console.WriteLine("You cannot modify deleted record.");
-                            }
-                            found = true;
-                            break;
-                        }
-                        else
-                        {
-                            LookingInChain(record, key, ref found,false,true);
-                        }
-
-                    }
-                }
-                if (!found)
-                {
-                    Console.WriteLine("Record with the given key doesn't exist in the database.");
-                }
-            }
-            else
-            {
-                Console.WriteLine("You cannot modify this record.");
-            }
-        }*/
 
         public void Update(int key, int[] numbers)
         {

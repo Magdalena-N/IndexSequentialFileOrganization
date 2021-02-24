@@ -31,18 +31,6 @@ namespace Projekt2v3
             FillIndex();
         }
 
-        /*public void FillIndex()
-        {
-            using (BinaryWriter writer = new BinaryWriter(File.Open(filePath, FileMode.OpenOrCreate)))
-            {
-                for (int i = 0; i < numberOfPages; i++)
-                {
-                    writer.Write(0);
-                    writer.Write(i);
-                }
-            }
-        }*/
-
         public void WritePage()
         {
             this.writes++;
@@ -110,15 +98,6 @@ namespace Projekt2v3
             fs.Close();
         }
 
-        /*public void UpdateIndex(int pageNumber, int key)
-        {
-            using (BinaryWriter writer = new BinaryWriter(File.Open(filePath, FileMode.OpenOrCreate)))
-            {
-                writer.Seek(pageNumber * IndexRow.ROW_SIZE, SeekOrigin.Begin);
-                writer.Write(key);
-            }
-        }*/
-
         public void UpdateIndex(int pageNumber, int key)
         {
             this.reads = 0;
@@ -138,31 +117,6 @@ namespace Projekt2v3
             WritePage();
             fs.Close();
         }
-
-        /*public int FindPage(int key)
-        {
-            int tempKey;
-            int pageNumber = 0;
-            
-            using (BinaryReader reader = new BinaryReader(new FileStream(filePath, FileMode.Open, FileAccess.Read)))
-            {
-                while (reader.BaseStream.Position != numberOfPages * IndexRow.ROW_SIZE)
-                {
-                    tempKey = reader.ReadInt32();
-                    if(tempKey == 0)
-                    {
-                        break;
-                    }
-                    if (tempKey > key)
-                    {
-                        break;
-                    }
-                    pageNumber = reader.ReadInt32(); 
-                }
-            } 
-            
-            return pageNumber;
-        }*/
 
         public int FindPage(int key)
         {

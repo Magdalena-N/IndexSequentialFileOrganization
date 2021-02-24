@@ -13,12 +13,12 @@ namespace Projekt2v3
 
     class Page
     {
-        public const int PAGE_SIZE = 99;   // rozmiar strony podana w bajtach
-        public const int BLOCKING_FACTOR = PAGE_SIZE / Record.SIZE; // wspolczynnik blokowania (srednia liczba rekordow na stronie) 435 / 29 = 15
+        public const int PAGE_SIZE = 132;   // rozmiar strony podana w bajtach
+        public const int BLOCKING_FACTOR = PAGE_SIZE / Record.SIZE; // wspolczynnik blokowania (srednia liczba rekordow na stronie) 
         public int pageNumber;
         public byte[] diskBlock = new byte[PAGE_SIZE];
         public int position;
-        public Mode mode; // read 0, write 1
+        public Mode mode; 
 
         public Page()
         {
